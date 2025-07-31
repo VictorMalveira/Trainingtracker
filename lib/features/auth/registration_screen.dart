@@ -49,45 +49,178 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
+  /// Valida todos os campos obrigatórios
+  String? _validateRequiredFields() {
+    if (_nameController.text.trim().isEmpty) {
+      return 'Nome é obrigatório';
+    }
+    if (_nameController.text.trim().length < 2) {
+      return 'Nome deve ter pelo menos 2 caracteres';
+    }
+    if (_birthDate == null) {
+      return 'Data de nascimento é obrigatória';
+    }
+    if (_trainingStartDate == null) {
+      return 'Data de início do treino é obrigatória';
+    }
+    if (_weightController.text.trim().isEmpty) {
+      return 'Peso é obrigatório';
+    }
+    return null;
+  }
+
+  /// Valida lógica de datas e idade
+  String? _validateDatesAndAge() {
+    final now = DateTime.now();
+    final age = now.difference(_birthDate!).inDays / 365.25;
+    
+    if (age < 4) {
+      return 'Idade mínima para cadastro é 4 anos';
+    }
+    if (age > 120) {
+      return 'Idade máxima para cadastro é 120 anos';
+    }
+    if (_trainingStartDate!.isAfter(now)) {
+      return 'Data de início de treino não pode ser no futuro';
+    }
+    if (_birthDate!.isAfter(_trainingStartDate!)) {
+      return 'Data de nascimento deve ser antes da data de início de treino';
+    }
+    
+    // Validar se começou a treinar muito novo
+    final trainingAge = _trainingStartDate!.difference(_birthDate!).inDays / 365.25;
+    if (trainingAge < 3) {
+      return 'Idade mínima para começar a treinar é 3 anos';
+    }
+    
+    return null;
+  }
+
+  /// Valida peso
+  String? _validateWeight() {
+    final weight = double.tryParse(_weightController.text.trim());
+    if (weight == null) {
+      return 'Peso deve ser um número válido';
+    }
+    if (weight <= 0) {
+      return 'Peso deve ser maior que zero';
+    }
+    if (weight < 10) {
+      return 'Peso mínimo é 10kg';
+    }
+    if (weight > 300) {
+      return 'Peso máximo é 300kg';
+    }
+    return null;
+  }
+
+  /// Valida faixa e grau
+  String? _validateBeltAndDegree() {
+    final maxDegree = _selectedBeltLevel == 'Preta' ? 6 : 4;
+    if (_selectedBeltDegree > maxDegree) {
+      return 'Grau máximo para faixa $_selectedBeltLevel é $maxDegree';
+    }
+    return null;
+  }
+
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_birthDate == null || _trainingStartDate == null) {
+    print('🚀 INICIANDO CADASTRO...');
+    
+    // Validação do formulário
+    if (!_formKey.currentState!.validate()) {
+      print('❌ Formulário inválido');
+      return;
+    }
+
+    // Validações customizadas
+    String? error = _validateRequiredFields() ?? 
+                   _validateDatesAndAge() ?? 
+                   _validateWeight() ?? 
+                   _validateBeltAndDegree();
+    
+    if (error != null) {
+      print('❌ Erro de validação: $error');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, preencha todas as datas')),
+        SnackBar(content: Text(error)),
       );
       return;
     }
 
     setState(() => _isLoading = true);
+    print('⏳ Iniciando processo de criação do usuário...');
 
     try {
       final userService = context.read<UserService>();
       final skillService = context.read<SkillService>();
 
+      // Verificar se já existe usuário (segurança extra)
+      final existingUser = await userService.getUser();
+      if (existingUser != null) {
+        throw Exception('Já existe um usuário cadastrado. Exclua o perfil atual primeiro.');
+      }
+
+      final weight = double.parse(_weightController.text.trim());
+      final userId = const Uuid().v4();
+      
+      print('📝 Criando usuário com ID: $userId');
+      print('   Nome: ${_nameController.text.trim()}');
+      print('   Peso: ${weight}kg');
+      print('   Faixa: $_selectedBeltLevel Grau $_selectedBeltDegree');
+      print('   Nascimento: ${_birthDate!.toIso8601String()}');
+      print('   Início treino: ${_trainingStartDate!.toIso8601String()}');
+
       // Cria o usuário
       final user = UserModel(
-        id: const Uuid().v4(),
+        id: userId,
         name: _nameController.text.trim(),
         birthDate: _birthDate!,
-        weight: double.parse(_weightController.text),
+        weight: weight,
         beltLevel: _selectedBeltLevel,
         beltDegree: _selectedBeltDegree,
+        xpPoints: 0,
+        currentStreak: 0,
+        longestStreak: 0,
         lastWorkoutDate: DateTime.now(),
         trainingStartDate: _trainingStartDate!,
       );
 
       await userService.createUser(user);
+      print('✅ Usuário criado no banco de dados');
 
       // Inicializa as habilidades do usuário
-      await skillService.getUserSkills(user.id);
+      print('🎯 Inicializando habilidades do usuário...');
+      final skills = await skillService.getUserSkills(user.id);
+      print('✅ ${skills.length} habilidades inicializadas');
+
+      // Log de sucesso
+      print('🎉 CADASTRO CONCLUÍDO COM SUCESSO!');
+      print('   Usuário: ${user.name}');
+      print('   ID: ${user.id}');
+      print('   Habilidades: ${skills.length}');
 
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cadastro realizado com sucesso! Bem-vindo ao JiuTracker!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
+        // Pequeno delay para mostrar a mensagem de sucesso
+        await Future.delayed(const Duration(milliseconds: 500));
         Navigator.pushReplacementNamed(context, '/home');
       }
+      
     } catch (e) {
+      print('❌ ERRO no cadastro: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao criar usuário: $e')),
+          SnackBar(
+            content: Text('Erro ao criar usuário: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } finally {

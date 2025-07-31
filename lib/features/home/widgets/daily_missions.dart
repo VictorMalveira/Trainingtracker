@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../models/daily_mission_model.dart';
 import '../../../services/daily_mission_service.dart';
 import '../../../services/user_service.dart';
+import '../../missions/widgets/mission_timer.dart';
 
 class DailyMissions extends StatefulWidget {
   const DailyMissions({super.key});
@@ -205,11 +206,23 @@ class _MissionTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  '+${mission.xp} XP • ${mission.estimatedTimeFormatted}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade600,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      '+${mission.xp} XP • ${mission.estimatedTimeFormatted}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    MissionTimer(
+                      mission: mission,
+                      showIcon: false,
+                      textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

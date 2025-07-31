@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../../models/daily_mission_model.dart';
 import '../../services/daily_mission_service.dart';
 import '../../services/user_service.dart';
 import '../../services/xp_service.dart';
+import '../../services/mission_penalty_service.dart';
+import 'widgets/mission_timer.dart';
 
 class DailyMissionsScreen extends StatefulWidget {
   const DailyMissionsScreen({super.key});
@@ -18,11 +21,36 @@ class _DailyMissionsScreenState extends State<DailyMissionsScreen> {
   bool _isLoading = true;
   Map<String, dynamic>? _loginBonus;
   Map<String, dynamic>? _inactivityPenalty;
+  late MissionPenaltyService _penaltyService;
 
   @override
   void initState() {
     super.initState();
+    final userService = context.read<UserService>();
+    final xpService = context.read<XPService>();
+    final dailyMissionService = context.read<DailyMissionService>();
+    
+    _penaltyService = MissionPenaltyService(
+      userService: userService,
+      xpService: xpService,
+      dailyMissionService: dailyMissionService
+    );
+    
     _loadMissions();
+    _startPenaltyCheck();
+  }
+
+  void _startPenaltyCheck() {
+    // Verifica penalidades a cada 30 segundos
+    Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        final userService = context.read<UserService>();
+        final userId = userService.getUser().then((user) => user?.id ?? '');
+        userId.then((id) => _penaltyService.checkAndApplyPenalties(id));
+      } else {
+        timer.cancel();
+      }
+    });
   }
 
   Future<void> _loadMissions() async {
@@ -31,7 +59,6 @@ class _DailyMissionsScreenState extends State<DailyMissionsScreen> {
     try {
       final userService = context.read<UserService>();
       final dailyMissionService = context.read<DailyMissionService>();
-      final xpService = context.read<XPService>();
 
       final user = await userService.getUser();
       if (user == null) return;
@@ -269,15 +296,15 @@ class _DailyMissionsScreenState extends State<DailyMissionsScreen> {
               children: [
                 Expanded(child: _buildStatItem('Missões', '${_stats['completedMissions']}/${_stats['totalMissions']}', Icons.check_circle)),
                 Expanded(child: _buildStatItem('XP Ganho', '${_stats['earnedXp']}', Icons.star)),
-                Expanded(child: _buildStatItem('Progresso', '${_stats['completionRate'].toStringAsFixed(0)}%', Icons.trending_up)),
+                Expanded(child: _buildStatItem('Progresso', '${(_stats['completionRate'] ?? 0).toStringAsFixed(0)}%', Icons.trending_up)),
               ],
             ),
             const SizedBox(height: 12),
             LinearProgressIndicator(
-              value: (_stats['completionRate'] as double) / 100,
+              value: ((_stats['completionRate'] ?? 0) as double) / 100,
               backgroundColor: Colors.grey.shade300,
               valueColor: AlwaysStoppedAnimation<Color>(
-                _stats['completionRate'] >= 100 ? Colors.green : Colors.blue,
+                (_stats['completionRate'] ?? 0) >= 100 ? Colors.green : Colors.blue,
               ),
             ),
             const SizedBox(height: 8),
@@ -456,6 +483,13 @@ class _MissionCard extends StatelessWidget {
                           color: Colors.grey.shade600,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      // Cronômetro da missão
+                      MissionTimer(
+                        mission: mission,
+                        showIcon: true,
+                        textStyle: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ],
                   ),
                 ),
@@ -469,25 +503,48 @@ class _MissionCard extends StatelessWidget {
                         color: Colors.green,
                       ),
                     ),
+                    if (mission.hasPenalty)
+                      Text(
+                        '-${mission.penaltyXP} XP',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     Text(
                       mission.estimatedTimeFormatted,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.grey.shade500,
                       ),
                     ),
+                    Text(
+                      mission.priorityFormatted,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            // Barra de progresso do tempo
+            if (mission.status == MissionStatus.pending)
+              LinearMissionTimer(
+                mission: mission,
+                height: 6,
+                showText: false,
+              ),
             const SizedBox(height: 12),
             Row(
               children: [
-                                 Container(
-                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                   decoration: BoxDecoration(
-                     color: Color(mission.status.color).withOpacity(0.1),
-                     borderRadius: BorderRadius.circular(12),
-                   ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Color(mission.status.color).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -503,14 +560,43 @@ class _MissionCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                // Badge de prioridade
+                if (mission.priority > 1)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          mission.priorityIcon,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          mission.priorityFormatted,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.orange.shade700,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const Spacer(),
-                if (mission.status == MissionStatus.pending)
+                if (mission.status.canComplete)
                   ElevatedButton.icon(
                     onPressed: onComplete,
                     icon: const Icon(Icons.check, size: 16),
                     label: const Text('Concluir'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
+                      backgroundColor: mission.status == MissionStatus.urgent ? Colors.red : Colors.green,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     ),
@@ -522,4 +608,4 @@ class _MissionCard extends StatelessWidget {
       ),
     );
   }
-} 
+}

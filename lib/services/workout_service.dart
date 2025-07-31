@@ -24,7 +24,11 @@ class WorkoutService {
         xpReward INTEGER NOT NULL,
         startedAt TEXT,
         completedAt TEXT,
-        notes TEXT
+        notes TEXT,
+        startPlanned TEXT,
+        endPlanned TEXT,
+        plannedDuration INTEGER,
+        xpExpiresAt TEXT
       )
     ''');
   }
@@ -33,7 +37,7 @@ class WorkoutService {
   Future<String> createWorkout(WorkoutModel workout) async {
     final id = _uuid.v4();
     final workoutWithId = workout.copyWith(id: id);
-    
+
     await _db.insert(_table, workoutWithId.toMap());
     return id;
   }
@@ -45,6 +49,17 @@ class WorkoutService {
       where: 'userId = ?',
       whereArgs: [userId],
       orderBy: 'scheduledDate ASC',
+    );
+
+    return List.generate(maps.length, (i) => WorkoutModel.fromMap(maps[i]));
+  }
+
+  /// Busca todos os treinos (alias para getUserWorkouts)
+  Future<List<WorkoutModel>> getAllWorkouts() async {
+    // Para simplificar, vamos buscar todos os treinos sem filtro de usuário
+    final List<Map<String, dynamic>> maps = await _db.query(
+      _table,
+      orderBy: 'scheduledDate DESC',
     );
 
     return List.generate(maps.length, (i) => WorkoutModel.fromMap(maps[i]));
@@ -71,7 +86,11 @@ class WorkoutService {
     final List<Map<String, dynamic>> maps = await _db.query(
       _table,
       where: 'userId = ? AND scheduledDate >= ? AND scheduledDate < ?',
-      whereArgs: [userId, startOfDay.toIso8601String(), endOfDay.toIso8601String()],
+      whereArgs: [
+        userId,
+        startOfDay.toIso8601String(),
+        endOfDay.toIso8601String(),
+      ],
       orderBy: 'scheduledDate ASC',
     );
 
@@ -131,11 +150,10 @@ class WorkoutService {
   /// Cancela um treino
   Future<bool> cancelWorkout(String workoutId) async {
     final workout = await getWorkout(workoutId);
-    if (workout == null || workout.status == WorkoutStatus.completed) return false;
+    if (workout == null || workout.status == WorkoutStatus.completed)
+      return false;
 
-    final updatedWorkout = workout.copyWith(
-      status: WorkoutStatus.cancelled,
-    );
+    final updatedWorkout = workout.copyWith(status: WorkoutStatus.cancelled);
 
     return await updateWorkout(updatedWorkout);
   }
@@ -153,19 +171,24 @@ class WorkoutService {
   /// Busca estatísticas de treinos
   Future<Map<String, dynamic>> getWorkoutStats(String userId) async {
     final allWorkouts = await getUserWorkouts(userId);
-    
+
     final totalWorkouts = allWorkouts.length;
-    final completedWorkouts = allWorkouts.where((w) => w.status == WorkoutStatus.completed).length;
-    final scheduledWorkouts = allWorkouts.where((w) => w.status == WorkoutStatus.scheduled).length;
-    final inProgressWorkouts = allWorkouts.where((w) => w.status == WorkoutStatus.inProgress).length;
-    final cancelledWorkouts = allWorkouts.where((w) => w.status == WorkoutStatus.cancelled).length;
-    
+    final completedWorkouts =
+        allWorkouts.where((w) => w.status == WorkoutStatus.completed).length;
+    final scheduledWorkouts =
+        allWorkouts.where((w) => w.status == WorkoutStatus.scheduled).length;
+    final inProgressWorkouts =
+        allWorkouts.where((w) => w.status == WorkoutStatus.inProgress).length;
+    final cancelledWorkouts =
+        allWorkouts.where((w) => w.status == WorkoutStatus.cancelled).length;
+
     final totalXpEarned = allWorkouts
         .where((w) => w.status == WorkoutStatus.completed)
         .fold<int>(0, (sum, w) => sum + w.xpReward);
-    
-    final completionRate = totalWorkouts > 0 ? completedWorkouts / totalWorkouts : 0.0;
-    
+
+    final completionRate =
+        totalWorkouts > 0 ? completedWorkouts / totalWorkouts : 0.0;
+
     return {
       'totalWorkouts': totalWorkouts,
       'completedWorkouts': completedWorkouts,
@@ -178,7 +201,10 @@ class WorkoutService {
   }
 
   /// Busca treinos por tipo
-  Future<List<WorkoutModel>> getWorkoutsByType(String userId, String type) async {
+  Future<List<WorkoutModel>> getWorkoutsByType(
+    String userId,
+    String type,
+  ) async {
     final List<Map<String, dynamic>> maps = await _db.query(
       _table,
       where: 'userId = ? AND type = ?',
@@ -190,7 +216,10 @@ class WorkoutService {
   }
 
   /// Busca treinos concluídos recentemente
-  Future<List<WorkoutModel>> getRecentCompletedWorkouts(String userId, {int limit = 10}) async {
+  Future<List<WorkoutModel>> getRecentCompletedWorkouts(
+    String userId, {
+    int limit = 10,
+  }) async {
     final List<Map<String, dynamic>> maps = await _db.query(
       _table,
       where: 'userId = ? AND status = 2', // completed
@@ -201,17 +230,29 @@ class WorkoutService {
 
     return List.generate(maps.length, (i) => WorkoutModel.fromMap(maps[i]));
   }
+  
+  /// Busca todos os treinos concluídos
+  Future<List<WorkoutModel>> getCompletedWorkouts(String userId) async {
+    final List<Map<String, dynamic>> maps = await _db.query(
+      _table,
+      where: 'userId = ? AND status = 2', // completed
+      whereArgs: [userId],
+      orderBy: 'completedAt DESC',
+    );
+
+    return List.generate(maps.length, (i) => WorkoutModel.fromMap(maps[i]));
+  }
 
   /// Limpa treinos antigos (mais de 30 dias)
   Future<int> cleanupOldWorkouts() async {
     final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
-    
+
     final result = await _db.delete(
       _table,
       where: 'scheduledDate < ? AND status IN (2, 3)', // completed, cancelled
       whereArgs: [thirtyDaysAgo.toIso8601String()],
     );
-    
+
     return result;
   }
 
@@ -276,11 +317,11 @@ class WorkoutService {
     final completionRate = stats['completionRate'] as double;
     final completedWorkouts = stats['completedWorkouts'] as int;
     final totalWorkouts = stats['totalWorkouts'] as int;
-    
+
     if (totalWorkouts == 0) {
       return 'Comece sua jornada agendando seu primeiro treino!';
     }
-    
+
     if (completionRate >= 0.8) {
       return 'Excelente! Você está mantendo uma consistência incrível!';
     } else if (completionRate >= 0.6) {
@@ -291,4 +332,4 @@ class WorkoutService {
       return 'Não desista! Cada treino é um passo para o seu objetivo.';
     }
   }
-} 
+}

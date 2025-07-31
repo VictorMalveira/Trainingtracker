@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../models/workout_model.dart';
 import '../../services/workout_service.dart';
 import '../../services/user_service.dart';
+import '../../services/workout_validation_service.dart';
 
 class CreateWorkoutScreen extends StatefulWidget {
   const CreateWorkoutScreen({super.key});
@@ -79,6 +80,56 @@ class _CreateWorkoutScreenState extends State<CreateWorkoutScreen> {
         'relatedSkills': ['Flexibilidade'],
         'description': 'Treino de alongamento e mobilidade',
       },
+      {
+        'name': 'Sparring',
+        'type': 'sparring',
+        'icon': '🥊',
+        'color': 0xFFFF7043,
+        'defaultDuration': 60,
+        'defaultXp': 60,
+        'relatedSkills': ['Técnica', 'Mental', 'Resistência'],
+        'description': 'Treino de combate e aplicação prática',
+      },
+      {
+        'name': 'Competição',
+        'type': 'competição',
+        'icon': '🏆',
+        'color': 0xFFFFD54F,
+        'defaultDuration': 180,
+        'defaultXp': 100,
+        'relatedSkills': ['Técnica', 'Mental', 'Força', 'Resistência'],
+        'description': 'Participação em campeonatos e torneios',
+      },
+      {
+        'name': 'Drilling',
+        'type': 'drilling',
+        'icon': '🔄',
+        'color': 0xFF9C27B0,
+        'defaultDuration': 45,
+        'defaultXp': 30,
+        'relatedSkills': ['Técnica', 'Mental'],
+        'description': 'Repetição de movimentos e técnicas',
+      },
+      {
+        'name': 'Aquecimento',
+        'type': 'aquecimento',
+        'icon': '🔥',
+        'color': 0xFFFF9800,
+        'defaultDuration': 15,
+        'defaultXp': 10,
+        'relatedSkills': ['Flexibilidade', 'Resistência'],
+        'description': 'Preparação corporal para treinos',
+      },
+      {
+        'name': 'Recuperação',
+        'type': 'recuperação',
+        'icon': '🛌',
+        'color': 0xFF4FC3F7,
+        'defaultDuration': 30,
+        'defaultXp': 15,
+        'relatedSkills': ['Mental', 'Flexibilidade'],
+        'description': 'Treino de recuperação ativa e relaxamento',
+      },
     ];
     _updateDefaultValues();
   }
@@ -150,7 +201,7 @@ class _CreateWorkoutScreenState extends State<CreateWorkoutScreen> {
 
     try {
       final userService = context.read<UserService>();
-      final workoutService = context.read<WorkoutService>();
+      final validationService = WorkoutValidationService();
 
       final user = await userService.getUser();
       if (user == null) {
@@ -160,27 +211,24 @@ class _CreateWorkoutScreenState extends State<CreateWorkoutScreen> {
         return;
       }
 
-      final workout = WorkoutModel(
-        id: '', // Será gerado pelo service
+      // Usa o novo serviço de validação para agendar o treino
+      await validationService.scheduleWorkoutWithValidation(
         userId: user.id,
         name: _nameController.text.trim(),
         type: _selectedType,
-        scheduledDate: _selectedDate,
-        estimatedDuration: _selectedDuration,
+        startTime: _selectedDate,
+        duration: _selectedDuration,
         relatedSkills: _selectedSkills,
         xpReward: _selectedXp,
-        notes:
-            _notesController.text.trim().isEmpty
-                ? null
-                : _notesController.text.trim(),
+        notes: _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
       );
-
-      await workoutService.createWorkout(workout);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Treino agendado com sucesso!'),
+            content: Text('Treino agendado com validação automática!'),
             backgroundColor: Colors.green,
           ),
         );

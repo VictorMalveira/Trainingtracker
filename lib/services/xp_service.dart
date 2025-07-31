@@ -4,11 +4,13 @@ import '../models/user_model.dart';
 import 'skill_service.dart';
 import 'user_service.dart';
 import 'daily_mission_service.dart';
+import 'workout_service.dart';
 
 class XPService extends ChangeNotifier {
   final SkillService _skillService;
   final UserService? _userService;
   final DailyMissionService? _dailyMissionService;
+final WorkoutService? _workoutService;
 
   int _xp = 0;
   int _level = 1;
@@ -21,7 +23,7 @@ class XPService extends ChangeNotifier {
   // Constantes
   static const int _xpPorPonto = 100;
 
-  XPService(this._skillService, [this._userService, this._dailyMissionService]);
+  XPService(this._skillService, [this._userService, this._dailyMissionService, this._workoutService]);
 
   // Getters
   int get xp => _xp;
@@ -29,6 +31,7 @@ class XPService extends ChangeNotifier {
   int get availableSkillPoints => _availableSkillPoints;
   int get currentStreak => _currentStreak;
   int get longestStreak => _longestStreak;
+  int get bestStreak => _longestStreak;
   DateTime? get lastLoginDate => _lastLoginDate;
   List<SkillModel> get skills => _skills;
   int get xpPorPonto => _xpPorPonto;
@@ -116,11 +119,24 @@ class XPService extends ChangeNotifier {
   }
 
   /// Remove XP (para penalidades)
-  Future<void> removeXP(int amount) async {
+  Future<bool> removeXP(int amount) async {
+    print('💸 Removendo $amount XP (XP atual: $_xp)');
+    
+    final oldXP = _xp;
+    final oldLevel = _level;
+    
     _xp = (_xp - amount).clamp(0, _xp);
-
+    
     _calculateLevel();
     _calculateAvailableSkillPoints();
+    
+    final xpRemoved = oldXP - _xp;
+    final levelLost = oldLevel - _level;
+    
+    print('✅ XP removido: $xpRemoved (Novo XP: $_xp)');
+    if (levelLost > 0) {
+      print('⬇️ Nível perdido: $levelLost (Novo nível: $_level)');
+    }
 
     // Salva no banco se UserService estiver disponível
     if (_userService != null) {
@@ -128,6 +144,7 @@ class XPService extends ChangeNotifier {
     }
 
     notifyListeners();
+    return xpRemoved > 0;
   }
 
   /// Adiciona um ponto de habilidade
@@ -350,5 +367,70 @@ class XPService extends ChangeNotifier {
       'remaining': remaining,
       'percentage': (xpToNextPoint / _xpPorPonto) * 100,
     };
+  }
+
+  /// Obtém o histórico de XP do usuário
+  /// Retorna um mapa com datas como chaves e valores de XP cumulativo como valores
+  Future<Map<String, dynamic>> getXpHistory(String userId) async {
+    final history = <String, int>{};
+    
+    // Obter todos os treinos concluídos
+    final workouts = await _workoutService!.getCompletedWorkouts(userId);
+    // Obter todas as missões completadas
+    final missions = await _dailyMissionService!.getCompletedMissionsForUser(userId);
+    
+    // Criar lista de eventos de XP com data e valor
+    final List<Map<String, dynamic>> xpEvents = [];
+    
+    for (var workout in workouts) {
+      if (workout.completedAt != null) {
+        final date = workout.completedAt!.toLocal().toIso8601String().split('T')[0];
+        xpEvents.add({'date': date, 'xp': workout.xpReward});
+      }
+    }
+    
+    for (var mission in missions) {
+      final date = mission.completedAt.toLocal().toIso8601String().split('T')[0];
+      xpEvents.add({'date': date, 'xp': mission.xp});
+    }
+    
+    // Ordenar eventos por data
+    xpEvents.sort((a, b) => a['date'].compareTo(b['date']));
+    
+    // Calcular XP cumulativo
+    int cumulativeXp = 0;
+    String? lastDate;
+    
+    for (var event in xpEvents) {
+      final date = event['date'];
+      cumulativeXp += (event['xp'] as int);
+      
+      if (date != lastDate) {
+        history[date] = cumulativeXp;
+        lastDate = date;
+      } else {
+        history[date] = cumulativeXp;
+      }
+    }
+    
+    // Preencher datas sem eventos com o último XP conhecido
+    if (history.isNotEmpty) {
+      final sortedDates = history.keys.toList()..sort();
+      final firstDate = DateTime.parse(sortedDates.first);
+      final now = DateTime.now();
+      int currentXp = 0;
+      
+      for (int i = 0; i <= now.difference(firstDate).inDays; i++) {
+        final date = firstDate.add(Duration(days: i));
+        final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        if (history.containsKey(dateStr)) {
+          currentXp = history[dateStr]!;
+        } else {
+          history[dateStr] = currentXp;
+        }
+      }
+    }
+    
+    return history;
   }
 }

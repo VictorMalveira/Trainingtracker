@@ -11,6 +11,10 @@ class WorkoutModel {
   final int xpReward; // XP ganho ao concluir
   final DateTime? startedAt;
   final DateTime? completedAt;
+  final DateTime? startPlanned; // Início planejado do treino
+  final DateTime? endPlanned; // Fim planejado do treino
+  final int? plannedDuration; // Duração planejada em minutos
+  final DateTime? xpExpiresAt; // Data de expiração do XP pendente
   final String? notes;
 
   WorkoutModel({
@@ -25,6 +29,10 @@ class WorkoutModel {
     required this.xpReward,
     this.startedAt,
     this.completedAt,
+    this.startPlanned,
+    this.endPlanned,
+    this.plannedDuration,
+    this.xpExpiresAt,
     this.notes,
   });
 
@@ -42,6 +50,10 @@ class WorkoutModel {
       'xpReward': xpReward,
       'startedAt': startedAt?.toIso8601String(),
       'completedAt': completedAt?.toIso8601String(),
+      'startPlanned': startPlanned?.toIso8601String(),
+      'endPlanned': endPlanned?.toIso8601String(),
+      'plannedDuration': plannedDuration,
+      'xpExpiresAt': xpExpiresAt?.toIso8601String(),
       'notes': notes,
     };
   }
@@ -60,6 +72,10 @@ class WorkoutModel {
       xpReward: map['xpReward'],
       startedAt: map['startedAt'] != null ? DateTime.parse(map['startedAt']) : null,
       completedAt: map['completedAt'] != null ? DateTime.parse(map['completedAt']) : null,
+      startPlanned: map['startPlanned'] != null ? DateTime.parse(map['startPlanned']) : null,
+      endPlanned: map['endPlanned'] != null ? DateTime.parse(map['endPlanned']) : null,
+      plannedDuration: map['plannedDuration'],
+      xpExpiresAt: map['xpExpiresAt'] != null ? DateTime.parse(map['xpExpiresAt']) : null,
       notes: map['notes'],
     );
   }
@@ -77,6 +93,10 @@ class WorkoutModel {
     int? xpReward,
     DateTime? startedAt,
     DateTime? completedAt,
+    DateTime? startPlanned,
+    DateTime? endPlanned,
+    int? plannedDuration,
+    DateTime? xpExpiresAt,
     String? notes,
   }) {
     return WorkoutModel(
@@ -91,6 +111,10 @@ class WorkoutModel {
       xpReward: xpReward ?? this.xpReward,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
+      startPlanned: startPlanned ?? this.startPlanned,
+      endPlanned: endPlanned ?? this.endPlanned,
+      plannedDuration: plannedDuration ?? this.plannedDuration,
+      xpExpiresAt: xpExpiresAt ?? this.xpExpiresAt,
       notes: notes ?? this.notes,
     );
   }
@@ -126,6 +150,18 @@ class WorkoutModel {
         return '🏃';
       case 'flexibilidade':
         return '🧘';
+      case 'sparring':
+        return '🥊';
+      case 'competição':
+      case 'competicao':
+        return '🏆';
+      case 'drilling':
+        return '🔄';
+      case 'aquecimento':
+        return '🔥';
+      case 'recuperação':
+      case 'recuperacao':
+        return '🛌';
       default:
         return '🏋️';
     }
@@ -146,6 +182,18 @@ class WorkoutModel {
         return 0xFF64B5F6; // Azul
       case 'flexibilidade':
         return 0xFFBA68C8; // Roxo
+      case 'sparring':
+        return 0xFFFF7043; // Laranja escuro
+      case 'competição':
+      case 'competicao':
+        return 0xFFFFD54F; // Amarelo
+      case 'drilling':
+        return 0xFF9C27B0; // Roxo escuro
+      case 'aquecimento':
+        return 0xFFFF9800; // Laranja médio
+      case 'recuperação':
+      case 'recuperacao':
+        return 0xFF4FC3F7; // Azul claro
       default:
         return 0xFF90A4AE; // Cinza
     }
@@ -180,6 +228,23 @@ class WorkoutModel {
       return '${scheduledDate.day.toString().padLeft(2, '0')}/${scheduledDate.month.toString().padLeft(2, '0')} às ${scheduledDate.hour.toString().padLeft(2, '0')}:${scheduledDate.minute.toString().padLeft(2, '0')}';
     }
   }
+  
+  /// Retorna a data de conclusão formatada
+  String get completedDate {
+    if (completedAt == null) return '';
+    
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final workoutDate = DateTime(completedAt!.year, completedAt!.month, completedAt!.day);
+    
+    if (workoutDate.isAtSameMomentAs(today)) {
+      return 'Hoje às ${completedAt!.hour.toString().padLeft(2, '0')}:${completedAt!.minute.toString().padLeft(2, '0')}';
+    } else if (workoutDate.isAtSameMomentAs(today.subtract(const Duration(days: 1)))) {
+      return 'Ontem às ${completedAt!.hour.toString().padLeft(2, '0')}:${completedAt!.minute.toString().padLeft(2, '0')}';
+    } else {
+      return '${completedAt!.day.toString().padLeft(2, '0')}/${completedAt!.month.toString().padLeft(2, '0')} às ${completedAt!.hour.toString().padLeft(2, '0')}:${completedAt!.minute.toString().padLeft(2, '0')}';
+    }
+  }
 
   @override
   String toString() {
@@ -193,6 +258,7 @@ enum WorkoutStatus {
   inProgress,  // Em andamento
   completed,   // Concluído
   cancelled,   // Cancelado
+  toValidate,  // Aguardando validação
 }
 
 /// Extensão para facilitar o uso do enum
@@ -207,6 +273,8 @@ extension WorkoutStatusExtension on WorkoutStatus {
         return 'Concluído';
       case WorkoutStatus.cancelled:
         return 'Cancelado';
+      case WorkoutStatus.toValidate:
+        return 'Aguardando validação';
     }
   }
 
@@ -220,6 +288,8 @@ extension WorkoutStatusExtension on WorkoutStatus {
         return '✅';
       case WorkoutStatus.cancelled:
         return '❌';
+      case WorkoutStatus.toValidate:
+        return '⏰';
     }
   }
 
@@ -233,6 +303,8 @@ extension WorkoutStatusExtension on WorkoutStatus {
         return 0xFF4CAF50; // Verde
       case WorkoutStatus.cancelled:
         return 0xFFF44336; // Vermelho
+      case WorkoutStatus.toValidate:
+        return 0xFFFF5722; // Laranja escuro
     }
   }
-} 
+}

@@ -27,7 +27,11 @@ class DailyMissionService {
         isCompleted INTEGER,
         date TEXT,
         estimatedTime INTEGER,
-        completedAt TEXT
+        completedAt TEXT,
+        deadline TEXT,
+        penaltyXP INTEGER DEFAULT 0,
+        hasPenalty INTEGER DEFAULT 0,
+        priority INTEGER DEFAULT 2
       )
     ''');
 
@@ -202,6 +206,12 @@ class DailyMissionService {
     availableMissions.shuffle();
     for (int i = 0; i < missionCount && i < availableMissions.length; i++) {
       final missionData = availableMissions[i];
+      
+      // Calcula prazo baseado na prioridade e dificuldade
+      final priority = _calculateMissionPriority(missionData);
+      final deadline = _calculateMissionDeadline(date, priority, missionData['estimatedTime']);
+      final penaltyXP = _calculatePenaltyXP(missionData['xp'], priority);
+      
       final mission = DailyMissionModel(
         id: _uuid.v4(),
         userId: userId,
@@ -211,6 +221,9 @@ class DailyMissionService {
         skill: missionData['skill'],
         date: date,
         estimatedTime: missionData['estimatedTime'],
+        deadline: deadline,
+        penaltyXP: penaltyXP,
+        priority: priority,
       );
       missions.add(mission);
     }
@@ -221,6 +234,49 @@ class DailyMissionService {
     }
 
     return missions;
+  }
+
+  // Calcula a prioridade da missão baseada na dificuldade e XP
+  int _calculateMissionPriority(Map<String, dynamic> missionData) {
+    final xp = missionData['xp'] as int;
+    final estimatedTime = missionData['estimatedTime'] as int;
+    
+    // Missões com mais XP ou que demoram mais têm prioridade menor (mais tempo)
+    if (xp >= 100 || estimatedTime >= 60) {
+      return 1; // Baixa prioridade
+    } else if (xp >= 50 || estimatedTime >= 30) {
+      return 2; // Média prioridade
+    } else {
+      return 3; // Alta prioridade
+    }
+  }
+
+  // Calcula o prazo da missão baseado na prioridade
+  DateTime _calculateMissionDeadline(DateTime date, int priority, int estimatedTime) {
+    final baseHours = switch (priority) {
+      1 => 18, // Baixa prioridade: até 18h do dia
+      2 => 15, // Média prioridade: até 15h do dia
+      3 => 12, // Alta prioridade: até 12h do dia
+      _ => 18,
+    };
+    
+    // Adiciona tempo extra baseado no tempo estimado
+    final extraHours = (estimatedTime / 30).ceil();
+    final totalHours = baseHours + extraHours;
+    
+    return DateTime(date.year, date.month, date.day, totalHours.clamp(8, 23));
+  }
+
+  // Calcula a penalidade de XP baseada no XP da missão e prioridade
+  int _calculatePenaltyXP(int missionXP, int priority) {
+    final penaltyMultiplier = switch (priority) {
+      1 => 0.3, // Baixa prioridade: 30% do XP
+      2 => 0.5, // Média prioridade: 50% do XP
+      3 => 0.8, // Alta prioridade: 80% do XP
+      _ => 0.5,
+    };
+    
+    return (missionXP * penaltyMultiplier).round();
   }
 
   /// Insere uma missão no banco
@@ -288,6 +344,17 @@ class DailyMissionService {
     return DailyMissionModel.fromMap(maps.first);
   }
 
+  /// Atualiza uma missão existente
+  Future<bool> updateMission(DailyMissionModel mission) async {
+    final result = await _db.update(
+      _table,
+      mission.toMap(),
+      where: 'id = ?',
+      whereArgs: [mission.id],
+    );
+    return result > 0;
+  }
+
   /// Busca estatísticas das missões de hoje
   Future<Map<String, dynamic>> getTodayStats(String userId) async {
     final missions = await getTodayMissions(userId);
@@ -335,20 +402,23 @@ class DailyMissionService {
 
   /// Lista de missões disponíveis
   List<Map<String, dynamic>> _getAvailableMissions(UserModel? user) {
-    return [
+    final allMissions = [
+      // Missões básicas (disponíveis para todos)
       {
         'title': 'Alongamento Matinal',
         'description': 'Faça 10 minutos de alongamento para melhorar a flexibilidade',
         'xp': 15,
         'skill': 'Flexibilidade',
         'estimatedTime': 10,
+        'minBelt': 'Branca',
       },
       {
-        'title': 'Estudo de Técnica',
-        'description': 'Assista um vídeo ou leia sobre uma técnica de Jiu-Jitsu',
+        'title': 'Estudo de Técnica Básica',
+        'description': 'Assista um vídeo sobre posições fundamentais',
         'xp': 20,
         'skill': 'Técnica',
         'estimatedTime': 15,
+        'minBelt': 'Branca',
       },
       {
         'title': 'Hidratação',
@@ -356,57 +426,82 @@ class DailyMissionService {
         'xp': 10,
         'skill': 'Resistência',
         'estimatedTime': 0,
+        'minBelt': 'Branca',
+      },
+      // Missões intermediárias
+      {
+        'title': 'Treino de Passagens de Guarda',
+        'description': 'Pratique 3 técnicas de passagem de guarda',
+        'xp': 30,
+        'skill': 'Técnica',
+        'estimatedTime': 20,
+        'minBelt': 'Azul',
       },
       {
-        'title': 'Respiração Controlada',
-        'description': 'Pratique exercícios de respiração por 5 minutos',
-        'xp': 12,
-        'skill': 'Mental',
-        'estimatedTime': 5,
-      },
-      {
-        'title': 'Mobilidade Articular',
-        'description': 'Faça exercícios de mobilidade para ombros e quadril',
-        'xp': 18,
-        'skill': 'Flexibilidade',
-        'estimatedTime': 12,
-      },
-      {
-        'title': 'Visualização',
-        'description': 'Visualize uma técnica ou sequência por 5 minutos',
-        'xp': 15,
-        'skill': 'Mental',
-        'estimatedTime': 5,
-      },
-      {
-        'title': 'Aquecimento Dinâmico',
-        'description': 'Faça 8 minutos de aquecimento dinâmico',
-        'xp': 16,
-        'skill': 'Agilidade',
-        'estimatedTime': 8,
-      },
-      {
-        'title': 'Reflexão de Treino',
-        'description': 'Anote 3 pontos positivos do seu último treino',
-        'xp': 12,
-        'skill': 'Mental',
-        'estimatedTime': 5,
-      },
-      {
-        'title': 'Exercício de Força',
-        'description': 'Faça 3 séries de flexões ou agachamentos',
-        'xp': 25,
-        'skill': 'Força',
-        'estimatedTime': 15,
-      },
-      {
-        'title': 'Cardio Rápido',
-        'description': 'Faça 10 minutos de cardio (pular corda, polichinelo)',
-        'xp': 22,
+        'title': 'Sparring Leve',
+        'description': 'Faça 15 minutos de sparring focado em defesa',
+        'xp': 35,
         'skill': 'Resistência',
-        'estimatedTime': 10,
+        'estimatedTime': 15,
+        'minBelt': 'Azul',
       },
+      // Missões avançadas
+      {
+        'title': 'Análise de Luta',
+        'description': 'Analise uma luta profissional e anote 5 pontos',
+        'xp': 40,
+        'skill': 'Mental',
+        'estimatedTime': 30,
+        'minBelt': 'Roxa',
+      },
+      {
+        'title': 'Treino de Finalizações Avançadas',
+        'description': 'Pratique sequências de finalizações complexas',
+        'xp': 45,
+        'skill': 'Técnica',
+        'estimatedTime': 25,
+        'minBelt': 'Marrom',
+      },
+      {
+        'title': 'Sessão de Drilling',
+        'description': 'Faça drilling de transições por 20 minutos',
+        'xp': 50,
+        'skill': 'Agilidade',
+        'estimatedTime': 20,
+        'minBelt': 'Preta',
+      },
+      // Adicione mais missões conforme necessário
     ];
+
+    if (user == null) return allMissions;
+
+    final beltOrder = ['Branca', 'Azul', 'Roxa', 'Marrom', 'Preta'];
+    final userBeltIndex = beltOrder.indexOf(user.beltLevel);
+    final degreeFactor = user.beltDegree / 4; // Normaliza grau
+
+    // Filtra missões disponíveis para o nível do usuário ou inferior
+    final available = allMissions.where((m) {
+      final minIndex = beltOrder.indexOf(m['minBelt'] as String);
+      return minIndex <= userBeltIndex;
+    }).toList();
+
+    // Ajusta XP baseado no grau
+    return available.map((m) {
+      final adjustedXp = (m['xp'] as int) + ((m['xp'] as int) * degreeFactor).round();
+      return {...m, 'xp': adjustedXp};
+    }).toList();
+  }
+
+  /// Busca missões completadas para um usuário específico
+  Future<List<MissionCompletedModel>> getCompletedMissionsForUser(String userId) async {
+    final List<Map<String, dynamic>> maps = await _db.query(
+      _completedTable,
+      where: 'userId = ?',
+      whereArgs: [userId],
+      orderBy: 'completedAt DESC',
+    );
+
+    return List.generate(maps.length, (i) => MissionCompletedModel.fromMap(maps[i]));
   }
 
   /// Retorna mensagem motivacional baseada no progresso
@@ -425,4 +520,4 @@ class DailyMissionService {
       return '🚀 Vamos começar! Cada missão te aproxima dos seus objetivos!';
     }
   }
-} 
+}

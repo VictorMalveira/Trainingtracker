@@ -10,6 +10,10 @@ class DailyMissionModel {
   final DateTime date;
   final int estimatedTime; // Tempo estimado em minutos
   final DateTime? completedAt; // Quando foi concluída
+  final DateTime deadline; // Prazo máximo para conclusão
+  final int penaltyXP; // XP perdido se não cumprir no prazo
+  final bool hasPenalty; // Se já aplicou a penalidade
+  final int priority; // Prioridade da missão (1-5)
 
   DailyMissionModel({
     required this.id,
@@ -22,7 +26,12 @@ class DailyMissionModel {
     required this.date,
     required this.estimatedTime,
     this.completedAt,
-  });
+    DateTime? deadline,
+    int? penaltyXP,
+    this.hasPenalty = false,
+    this.priority = 3,
+  }) : deadline = deadline ?? DateTime(date.year, date.month, date.day, 23, 59, 59),
+       penaltyXP = penaltyXP ?? (xp * 0.5).round();
 
   /// Converte o modelo para um Map (para salvar no banco)
   Map<String, dynamic> toMap() {
@@ -37,11 +46,16 @@ class DailyMissionModel {
       'date': date.toIso8601String(),
       'estimatedTime': estimatedTime,
       'completedAt': completedAt?.toIso8601String(),
+      'deadline': deadline.toIso8601String(),
+      'penaltyXP': penaltyXP,
+      'hasPenalty': hasPenalty ? 1 : 0,
+      'priority': priority,
     };
   }
 
   /// Cria um modelo a partir de um Map (do banco de dados)
   factory DailyMissionModel.fromMap(Map<String, dynamic> map) {
+    final date = DateTime.parse(map['date']);
     return DailyMissionModel(
       id: map['id'],
       userId: map['userId'],
@@ -50,12 +64,18 @@ class DailyMissionModel {
       xp: map['xp'],
       skill: map['skill'],
       isCompleted: map['isCompleted'] == 1,
-      date: DateTime.parse(map['date']),
+      date: date,
       estimatedTime: map['estimatedTime'] ?? 30,
       completedAt:
           map['completedAt'] != null
               ? DateTime.parse(map['completedAt'])
               : null,
+      deadline: map['deadline'] != null 
+          ? DateTime.parse(map['deadline'])
+          : DateTime(date.year, date.month, date.day, 23, 59, 59),
+      penaltyXP: map['penaltyXP'] ?? ((map['xp'] ?? 0) * 0.5).round(),
+      hasPenalty: map['hasPenalty'] == 1,
+      priority: map['priority'] ?? 3,
     );
   }
 
@@ -71,6 +91,10 @@ class DailyMissionModel {
     DateTime? date,
     int? estimatedTime,
     DateTime? completedAt,
+    DateTime? deadline,
+    int? penaltyXP,
+    bool? hasPenalty,
+    int? priority,
   }) {
     return DailyMissionModel(
       id: id ?? this.id,
@@ -83,21 +107,77 @@ class DailyMissionModel {
       date: date ?? this.date,
       estimatedTime: estimatedTime ?? this.estimatedTime,
       completedAt: completedAt ?? this.completedAt,
+      deadline: deadline ?? this.deadline,
+      penaltyXP: penaltyXP ?? this.penaltyXP,
+      hasPenalty: hasPenalty ?? this.hasPenalty,
+      priority: priority ?? this.priority,
     );
   }
 
-  /// Verifica se a missão expirou (não foi concluída até o fim do dia)
+  /// Verifica se a missão expirou (não foi concluída até o prazo)
   bool get isExpired {
     final now = DateTime.now();
-    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
-    return !isCompleted && now.isAfter(endOfDay);
+    return !isCompleted && now.isAfter(deadline);
+  }
+  
+  /// Verifica se a missão está próxima do prazo (últimas 2 horas)
+  bool get isNearDeadline {
+    final now = DateTime.now();
+    final twoHoursBefore = deadline.subtract(const Duration(hours: 2));
+    return !isCompleted && now.isAfter(twoHoursBefore) && now.isBefore(deadline);
+  }
+  
+  /// Retorna o tempo restante até o prazo
+  Duration get timeRemaining {
+    final now = DateTime.now();
+    if (now.isAfter(deadline)) return Duration.zero;
+    return deadline.difference(now);
+  }
+  
+  /// Retorna o tempo restante formatado
+  String get timeRemainingFormatted {
+    final remaining = timeRemaining;
+    if (remaining == Duration.zero) return 'Expirado';
+    
+    if (remaining.inDays > 0) {
+      return '${remaining.inDays}d ${remaining.inHours % 24}h';
+    } else if (remaining.inHours > 0) {
+      return '${remaining.inHours}h ${remaining.inMinutes % 60}min';
+    } else {
+      return '${remaining.inMinutes}min';
+    }
   }
 
   /// Retorna o status da missão
   MissionStatus get status {
     if (isCompleted) return MissionStatus.completed;
     if (isExpired) return MissionStatus.expired;
+    if (isNearDeadline) return MissionStatus.urgent;
     return MissionStatus.pending;
+  }
+  
+  /// Retorna a prioridade formatada
+  String get priorityFormatted {
+    switch (priority) {
+      case 1: return 'Muito Baixa';
+      case 2: return 'Baixa';
+      case 3: return 'Normal';
+      case 4: return 'Alta';
+      case 5: return 'Crítica';
+      default: return 'Normal';
+    }
+  }
+  
+  /// Retorna o ícone da prioridade
+  String get priorityIcon {
+    switch (priority) {
+      case 1: return '⬇️';
+      case 2: return '↘️';
+      case 3: return '➡️';
+      case 4: return '↗️';
+      case 5: return '⬆️';
+      default: return '➡️';
+    }
   }
 
   /// Retorna o ícone baseado na habilidade
@@ -168,7 +248,7 @@ class DailyMissionModel {
 }
 
 /// Enum para o status da missão
-enum MissionStatus { pending, completed, expired }
+enum MissionStatus { pending, urgent, completed, expired }
 
 /// Extensão para facilitar o uso do status
 extension MissionStatusExtension on MissionStatus {
@@ -176,6 +256,8 @@ extension MissionStatusExtension on MissionStatus {
     switch (this) {
       case MissionStatus.pending:
         return 'Pendente';
+      case MissionStatus.urgent:
+        return 'Urgente';
       case MissionStatus.completed:
         return 'Concluída';
       case MissionStatus.expired:
@@ -186,11 +268,13 @@ extension MissionStatusExtension on MissionStatus {
   String get icon {
     switch (this) {
       case MissionStatus.pending:
-        return '✅';
+        return '📋';
+      case MissionStatus.urgent:
+        return '⚠️';
       case MissionStatus.completed:
-        return '🎉';
+        return '✅';
       case MissionStatus.expired:
-        return '⏰';
+        return '❌';
     }
   }
 
@@ -198,10 +282,17 @@ extension MissionStatusExtension on MissionStatus {
     switch (this) {
       case MissionStatus.pending:
         return 0xFF2196F3; // Azul
+      case MissionStatus.urgent:
+        return 0xFFFF9800; // Laranja
       case MissionStatus.completed:
         return 0xFF4CAF50; // Verde
       case MissionStatus.expired:
         return 0xFFF44336; // Vermelho
     }
+  }
+  
+  /// Retorna se o status permite conclusão
+  bool get canComplete {
+    return this == MissionStatus.pending || this == MissionStatus.urgent;
   }
 }

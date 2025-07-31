@@ -44,6 +44,15 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () {
+              Navigator.pushNamed(context, '/profile');
+            },
+            tooltip: 'Perfil',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -110,12 +119,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
                 _QuickActionButton(
-                  icon: Icons.fitness_center,
-                  title: 'Meus Treinos',
-                  subtitle: 'Gerenciar treinos',
+                  icon: Icons.list_alt,
+                  title: 'Lista de Treinos',
+                  subtitle: 'Ver todos os treinos',
                   onTap: () async {
                     Navigator.pop(context);
-                    await Navigator.pushNamed(context, '/my-workouts');
+                    await Navigator.pushNamed(context, '/workouts-list');
+                  },
+                ),
+                _QuickActionButton(
+                  icon: Icons.add_circle,
+                  title: 'Novo Treino',
+                  subtitle: 'Agendar treino',
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await Navigator.pushNamed(context, '/create-workout');
                   },
                 ),
                 _QuickActionButton(
@@ -156,6 +174,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         backgroundColor: Colors.green,
                       ),
                     );
+                  },
+                ),
+                _QuickActionButton(
+                  icon: Icons.person,
+                  title: 'Meu Perfil',
+                  subtitle: 'Ver perfil completo',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/profile');
                   },
                 ),
                 Padding(

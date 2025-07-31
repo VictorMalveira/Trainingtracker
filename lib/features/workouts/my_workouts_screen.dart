@@ -401,100 +401,113 @@ class _WorkoutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(workout.typeIcon, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        workout.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(
+            context,
+            '/workout-details',
+            arguments: workout.id,
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(workout.typeIcon, style: const TextStyle(fontSize: 24)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          workout.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
-                      ),
-                      Text(
-                        workout.type,
-                        style: TextStyle(
-                          color: Color(workout.typeColor),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                        Text(
+                          workout.type,
+                          style: TextStyle(
+                            color: Color(workout.typeColor),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  _buildStatusChip(),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    workout.scheduledDateFormatted,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  const SizedBox(width: 16),
+                  Icon(Icons.timer, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    workout.durationFormatted,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  const SizedBox(width: 16),
+                  Icon(Icons.star, size: 16, color: Colors.amber[600]),
+                  const SizedBox(width: 4),
+                  Text(
+                    '+${workout.xpReward} XP',
+                    style: TextStyle(
+                      color: Colors.amber[600],
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              if (workout.relatedSkills.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 4,
+                  children: workout.relatedSkills.map((skill) {
+                    return Chip(
+                      label: Text(
+                        skill,
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                      backgroundColor: Colors.blue[50],
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    );
+                  }).toList(),
                 ),
-                _buildStatusChip(),
               ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
+              if (workout.notes != null) ...[
+                const SizedBox(height: 8),
                 Text(
-                  workout.scheduledDateFormatted,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-                const SizedBox(width: 16),
-                Icon(Icons.timer, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text(
-                  workout.durationFormatted,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-                const SizedBox(width: 16),
-                Icon(Icons.star, size: 16, color: Colors.amber[600]),
-                const SizedBox(width: 4),
-                Text(
-                  '+${workout.xpReward} XP',
+                  workout.notes!,
                   style: TextStyle(
-                    color: Colors.amber[600],
+                    color: Colors.grey[600],
                     fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
               ],
-            ),
-            if (workout.relatedSkills.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 4,
-                children:
-                    workout.relatedSkills.map((skill) {
-                      return Chip(
-                        label: Text(
-                          skill,
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                        backgroundColor: Colors.blue[50],
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      );
-                    }).toList(),
+              const SizedBox(height: 12),
+              // Evitar que o clique nos botões disparem o onTap do InkWell
+              GestureDetector(
+                onTap: () {},
+                child: _buildActionButtons(),
               ),
             ],
-            if (workout.notes != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                workout.notes!,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            _buildActionButtons(),
-          ],
+          ),
         ),
       ),
     );
@@ -565,6 +578,8 @@ class _WorkoutCard extends StatelessWidget {
       case WorkoutStatus.completed:
         return const SizedBox.shrink();
       case WorkoutStatus.cancelled:
+        return const SizedBox.shrink();
+      case WorkoutStatus.toValidate:
         return const SizedBox.shrink();
     }
   }

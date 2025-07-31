@@ -10,11 +10,21 @@ import 'services/user_service.dart';
 import 'services/skill_service.dart';
 import 'services/daily_mission_service.dart';
 import 'services/workout_service.dart';
+import 'services/app_initialization_service.dart';
 import 'features/home/home_screen.dart';
 import 'features/auth/registration_screen.dart';
 import 'features/missions/daily_missions_screen.dart';
-import 'features/workouts/create_workout_screen.dart';
+import 'features/workouts/workout_details_screen.dart';
+import 'features/workouts/workouts_list_screen.dart';
 import 'features/workouts/my_workouts_screen.dart';
+import 'features/workouts/create_workout_screen.dart';
+import 'features/profile/advanced_settings_screen.dart';
+import 'features/profile/profile_screen.dart';
+import 'features/progress/progress_screen.dart';
+import 'screens/workout_validation_screen.dart';
+import 'services/notification_service.dart';
+import 'services/workout_validation_service.dart';
+import 'services/xp_service.dart' as xp_service_import;
 
 void main() async {
   try {
@@ -22,6 +32,25 @@ void main() async {
     WidgetsFlutterBinding.ensureInitialized();
 
     developer.log('Iniciando aplicativo...');
+    
+    // Inicializa os serviços do aplicativo
+    final appInitService = AppInitializationService();
+    await appInitService.initialize();
+    
+    // Configura o handler de notificações para validação de treinos
+    final notificationService = NotificationService();
+    await notificationService.initialize();
+    
+    // Configura o callback para quando uma notificação é tocada
+    notificationService.setNotificationTapCallback((String? payload) {
+      if (payload != null && payload.startsWith('workout_validation_')) {
+        // Extrai o ID do treino do payload
+        final workoutId = payload.replaceFirst('workout_validation_', '');
+        // Aqui você pode navegar para a tela de validação
+        // Isso será tratado pela navegação global quando implementada
+        developer.log('Notificação de validação tocada para treino: $workoutId');
+      }
+    });
 
     // Inicializa o banco de dados
     developer.log('Abrindo banco de dados...');
@@ -187,6 +216,23 @@ class JiuTrackerApp extends StatelessWidget {
           '/daily-missions': (context) => const DailyMissionsScreen(),
           '/create-workout': (context) => const CreateWorkoutScreen(),
           '/my-workouts': (context) => const MyWorkoutsScreen(),
+          '/workouts-list': (context) => const WorkoutsListScreen(),
+          '/profile': (context) => const ProfileScreen(),
+          '/progress': (context) => const ProgressScreen(),
+          '/advanced-settings': (context) => const AdvancedSettingsScreen(),
+          '/workout-details': (context) {
+            final workoutId = ModalRoute.of(context)!.settings.arguments as String?;
+            if (workoutId == null) {
+              return const Scaffold(
+                body: Center(child: Text('ID do treino não fornecido')),
+              );
+            }
+            return WorkoutDetailsScreen(workoutId: workoutId);
+          },
+          '/workout-validation': (context) {
+            final workoutId = ModalRoute.of(context)!.settings.arguments as String?;
+            return WorkoutValidationScreen(workoutId: workoutId);
+          },
         },
         debugShowCheckedModeBanner: false,
       ),
